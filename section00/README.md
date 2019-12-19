@@ -2,14 +2,17 @@
 
 Before we start writing web servers let's analyze a simple Go program.
 
-[embedmd]:# (hello/main.go /package main/ $)
+[embedmd]: # "hello/main.go /package main/ $"
+
 ```go
 package main
 
-import    "fmt"
+import "fmt"
 
-func         main() {
-	fmt.Println("hello, world!")        }
+func main() {
+	fmt.Println("hello, world!")
+}
+
 ```
 
 You should be able to understand every line of this program.
@@ -60,7 +63,7 @@ This will install the `goimports` binary in `$GOAPTH/bin`.
 It is basically the equivalent to fetching the code from GitHub and then running `go install`.
 
 You can now run `goimports` as a replacement of `gofmt`.
-`goimports` formats your code *and* fixes your imported package list adding missing ones and removing those unused.
+`goimports` formats your code _and_ fixes your imported package list adding missing ones and removing those unused.
 
 Similarly to `gofmt` you can run:
 

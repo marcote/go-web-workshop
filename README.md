@@ -35,10 +35,6 @@ The workshops is divided in eleven sections:
 - [4: Deploying to App Engine](section04/README.md)
 - [5: Hello, HTML](section05/README.md)
 - [6: JSON encoding and decoding](section06/README.md)
-- [7: Durable storage with Cloud Datastore](section07/README.md)
-- [8: Retrieving remote resources with urlfetch](section08/README.md)
-- [9: What is Memcache and how to use it from App Engine](section09/README.md)
-- [10: Congratulations!](section10/README.md)
 
 ## Resources
 
