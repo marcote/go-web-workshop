@@ -1,202 +1,193 @@
-# 4: Deploying to App Engine
+# 5: Hello, HTML
 
-In the previous chapter we learned how to write a simple HTTP server in Go as a
-static binary that you can execute easily on any server with the same platform.
+In this chapter you will learn how to serve HTML pages on App Engine and how to
+make the HTML and JavaScript components communicate with your Go code.
 
-## Getting ready for success
+## Only static content
 
-What would happen if your "Hello, web" went viral? Would your simple binary
-handle the load? You would probably need to add some extra servers, which is
-probably a good idea just to have redundancy.
+For now let's start with a simple HTML page:
 
-How do you that? Many solutions, but the simplest one is Google App Engine.
+[embedmd]:# (all_static/hello.html /.*DOCTYPE/ $)
+```html
+<!DOCTYPE html>
 
-<div>
-<img src="img/app-engine-logo.png" height=100px></img>
-<img src="img/plus.png" height=100px></img>
-<img src="img/gopher.png" height=100px></img>
-<img src="img/equals.png" height=100px></img>
-<img src="img/gaegopher.jpg" height=100px></img>
-</div>
-
-With Google App Engine you provide your code and Google is responsible for
-handling any amount of traffic you may get, making sure all servers are up
-so you don't need to worry about them. Check the
-[docs](https://cloud.google.com/appengine/docs) out for more info, this is a
-workshop after all, not a marketing document.
-
-## From Hello, web to Hello, App Engine
-
-Moving from a stand alone server to an App Engine app is quite simple, let's
-go through the process.
-
-### Adapt the Go code
-
-When you deploy some code to the Google App Engine servers you don't provide a
-binary but just some code that will be compiled and linked on Google servers.
-
-This means you don't define either the `main` package or the `main` function.
-Also you don't have to choose what port you listen to as App Engine will also
-manage that for you.
-
-This simplifies the code we had before:
-
-[embedmd]:# (examples/hello.go /package hello/ $)
-```go
-package hello
-
-import (
-	"fmt"
-	"net/http"
-)
-
-func helloHandler(w http.ResponseWriter, r *http.Request) {
-	fmt.Fprintln(w, "Hello, App Engine")
-}
-
-func init() {
-	http.HandleFunc("/hello", helloHandler)
-}
+<html>
+<head>
+  <title>Hello, App Engine</title>
+</head>
+<body>
+  <h1>Hello, App Engine</h1>
+</body>
+</html>
 ```
 
-As you can see we still need to register our handler, and since that needs to
-happen before the App Engine app starts listening for request we do it in an
-`init` functions. All `init` functions in a Go program are executed after all
-variable declarations and before the `main` function starts.
+We can create a new `app.yaml` to serve this static page:
 
-### No more http.DefaultClient
-
-Any operation in App Engine that involves getting out of the machine are controlled by
-a context. This context handles security, quotas, and many other important things.
-
-This means that simply running `http.Get` to fetch some remote page will fail. That's sad.
-How do we fix it? Meet the `urlfetch` package!
-
-The `urlfetch` package is defined in [google.golang.org/appengine/urlfetch](https://google.golang.org/appengine/urlfetch),
-and to obtain a new HTTP client we call the `Client` function that requires an `appengine.Context`.
-
-Before you start using it you need to download it to your machine. Simply run:
-
-```bash
-$ go get -u google.golang.org/appengine/...
-```
-
-To create a new `appengine.Context` we need to call `appengine.NewContext` and pass an HTTP request.
-
-[embedmd]:# (app/app.go /package app/ $)
-```go
-package app
-
-import (
-	"fmt"
-	"net/http"
-
-	"google.golang.org/appengine"
-	"google.golang.org/appengine/urlfetch"
-)
-
-func init() {
-	http.HandleFunc("/", handler)
-}
-
-func handler(w http.ResponseWriter, r *http.Request) {
-	// first create a new context
-	c := appengine.NewContext(r)
-	// and use that context to create a new http client
-	client := urlfetch.Client(c)
-
-	// now we can use that http client as before
-	res, err := client.Get("http://google.com")
-	if err != nil {
-		http.Error(w, fmt.Sprintf("could not get google: %v", err), http.StatusInternalServerError)
-		return
-	}
-	fmt.Fprintf(w, "Got Google with status %s\n", res.Status)
-}
-```
-
-We will see how the `appengine.Context` is used for basically everything on App Engine.
-
-### Write your app.yaml
-
-In addition to the code above, Google App Engine also requires a description
-file named `app.yaml`. This file describes the application, its runtime, and
-gives a list of handlers to be executed depending on the request path similarly
-to what we did with `HandleFunc`.
-
-This would be the `app.yaml` file for our Hello, App Engine application.
-
-[embedmd]:# (app/app.yaml)
+[embedmd]:# (all_static/app.yaml)
 ```yaml
-runtime: go                    # the runtime (python, java, go, php)
-api_version: go1               # the runtime version
+runtime: go
+api_version: go1
 
 handlers:
-- url: /.*                     # for all requests
-  script: _go_app              # pass the request to the Go code
+- url: /hello
+  static_files: hello.html
+  upload: hello.html
 ```
 
-## Run the application locally
+As you can see we are handling the requests with path `/hello` displaying
+the contents of the `hello.html` file.
 
-Once we have the `main.go` and `app.yaml` files in a directory we can run the
-application locally by going to the directory and executing the `dev_appserver.py` tool
-that comes with the Go SDK for App Engine.
+Try running your application locally (you can find all the files
+[here](./all_static)). This should fail, because the Go runtime requires
+having some Go code in it!
+
+There's two solutions for this:
+
+- use the Python runtime which doesn't require any Python code
+
+- or add some Go code, something as simple as this `dummy.go` file:
+
+[embedmd]:# (all_static/dummy.go /package dummy/ $)
+```go
+package dummy
+```
+
+We will do the latter as we'll add more Go code later on.
+
+Try running your application again:
 
 ```bash
 $ dev_appserver.py .
 ```
 
-You will see many logs, check for errors, and if everything works fine you will
-see a message like:
-
-```bash
-INFO     2016-08-31 15:21:05,793 dispatcher.py:197] Starting module "default" running at: http://localhost:8080
-```
-
-Visit http://localhost:8080/hello and you should see your beautiful web app
-again.
-
-Try editing the code to change the message printed to the output. If you
-refresh your browser, you can see that your changes get displayed without
-having to restart the server.
-
-## Deploy to the App Engine servers
-
-Once you're happy with how your application looks you might want to share it
-with the world, to do so you will need to create a Google Cloud Platform
-project.
-
-1. Visit https://console.developers.google.com and log in with your credentials.
-1. Click on `create a project` and choose a name and project ID
-1. Run `gcloud init` and choose your recently created project. No need to set Compute zones.
-
-That's it! You can now deploy your code to the Google App Engine servers!
-
-Modify the `app.yaml` changing the `application` line to contain the project ID
-of the project you just created and deploy it running:
+Or deploying it:
 
 ```bash
 $ gcloud app deploy app.yaml
 ```
 
-Once this succeeds your app is available on https://your-project-id.appspot.com,
-or running:
+And verify that the output matches your expectations:
 
-```bash
-$ gcloud app browse
+![Hello, App Engine](screenshot.png)
+
+## Serving dynamic content: HTML + Go
+
+Static content is often not enough and we need our web app frontend (HTML + JS)
+to communicate with our backend.
+
+To do so we have two different options:
+
+- use `app.yaml` to determine what requests are handled by which part, or
+- use multiple modules on possibly different runtimes.
+
+You can learn more about Go modules on this
+[documentation](https://cloud.google.com/appengine/docs/go/modules/).
+
+For this workshop we will go with the simple option and just enhance the
+previous `app.yaml` to match our requirements.
+
+We will need three components:
+
+- a Go program similar to the previous one,
+- an HTML page with pure static content, and
+- an `app.yaml` file to glue everything together.
+
+The only part that changes here is the `app.yaml`:
+
+[embedmd]:# (mixed_content/app.yaml)
+```yaml
+runtime: go
+api_version: go1
+
+handlers:
+# requests with empty paths are shown the html page.
+- url: /
+  static_files: hello.html
+  upload: hello.html
+# requests with the /api/ path are handled by the Go app.
+- url: /api/.*
+  script: _go_app
 ```
 
-### Exercise Deploy to App Engine
+Try changing the `/api/hello` url on the second handler to `/api/backend`.
+Why does it fail? Fix it.
 
-Follow the instructions above and deploy the code you've been working on so far
-to App Engine.
+### Accessing the backend from the frontend
+
+This can be done in *many* ways, as many as JavaScript frameworks you can think
+of. For this simple example we will simply use [jQuery](https://jquery.com/).
+
+
+[embedmd]:# (mixed_content/hello.html /.*DOCTYPE/ $)
+```html
+<!DOCTYPE html>
+
+<html>
+<head>
+	<title>Hello, App Engine</title>
+	<script src="https://ajax.googleapis.com/ajax/libs/jquery/2.1.4/jquery.min.js"></script>
+</head>
+<body>
+	<h1>Hello, App Engine</h1>
+	<p>The backend says: <span id="message"></span></p>
+	<script>
+		$(function() {
+			$("#message").load("/api/hello");
+		});
+	</script>
+</body>
+</html>
+```
+
+## Directory organization for bigger applications
+
+As you can imagine very soon you will want to serve many static files, some
+HTML, JavaScript, CSS, etc. Rather than listing each of those on your `app.yaml`
+there's a much simpler option once you put all of them in a single directory.
+
+	my_app
+	|- app.yaml
+	|- hello.go
+	\- static
+	   |- index.html
+	   |- style.css
+	   \- script.js
+
+Your `app.yaml` in this case will look like this:
+
+[embedmd]:# (static_dirs/app.yaml /runtime/ $)
+```yaml
+runtime: go
+api_version: go1
+
+handlers:
+# requests starting with /api/ are handled by the Go app.
+- url: /api/.*
+  script: _go_app
+
+# if the path is empty show index.html.
+- url: /
+  static_files: static/index.html
+  upload: static/index.html
+
+# otherwise try to find it in the static directory.
+- url: /
+  static_dir: static
+```
+
+This kind of structure provides a clear structure of the application.
+
+## Exercise: let's build a whole app!
+
+OK, we know now enough stuff to build an application. So, let's do it! 🎉
+
+Have a look at this [introduction](../events) describing the application
+and implement *ONLY* [step 0](../events/step0/README.md). Then come back for more.
 
 # Congratulations!
 
-You just deployed your first web app to Google App Engine! Maybe it's time to
-tell the world about it? No more localhost on your URLs!
+You just created your first application where a web frontend communicates with
+your Go backend!
 
-Or maybe it's a bit too early ... let's see if we can make the application look
-a bit better using HTML in addition to our Go code.
-
-Continue to [the next section](../section05/README.md).
+But, shouldn't the backend generate JSON rather than plain text?
+Let's learn about JSON encoding and decoding on the [next section](../section06/README.md).

@@ -1,193 +1,196 @@
-# 5: Hello, HTML
+# 6: JSON encoding and decoding
 
-In this chapter you will learn how to serve HTML pages on App Engine and how to
-make the HTML and JavaScript components communicate with your Go code.
+Go's standard library provides JSON encoding and decoding with the package
+[`encoding/json`](https://golang.org/pkg/encoding/json).
 
-## Only static content
+## Encoding and decoding JSON
 
-For now let's start with a simple HTML page:
+Let's first learn how to encode and decode JSON in a general way and we'll
+see afterwards how to do it inside of an HTTP server.
 
-[embedmd]:# (all_static/hello.html /.*DOCTYPE/ $)
-```html
-<!DOCTYPE html>
+### JSON and Go structs
 
-<html>
-<head>
-  <title>Hello, App Engine</title>
-</head>
-<body>
-  <h1>Hello, App Engine</h1>
-</body>
-</html>
+The easiest way to encode and decode JSON objects with Go is to create a Go type
+which matches the structure of the JSON object we want to decode.
+
+So given a JSON object like this:
+
+```json
+{
+	"name": "gopher",
+	"age_years": 5
+}
 ```
 
-We can create a new `app.yaml` to serve this static page:
+We would create a type containing the same fields:
 
-[embedmd]:# (all_static/app.yaml)
-```yaml
-runtime: go
-api_version: go1
-
-handlers:
-- url: /hello
-  static_files: hello.html
-  upload: hello.html
-```
-
-As you can see we are handling the requests with path `/hello` displaying
-the contents of the `hello.html` file.
-
-Try running your application locally (you can find all the files
-[here](./all_static)). This should fail, because the Go runtime requires
-having some Go code in it!
-
-There's two solutions for this:
-
-- use the Python runtime which doesn't require any Python code
-
-- or add some Go code, something as simple as this `dummy.go` file:
-
-[embedmd]:# (all_static/dummy.go /package dummy/ $)
 ```go
-package dummy
+type Person struct {
+	Name     string
+	AgeYears int
+}
 ```
 
-We will do the latter as we'll add more Go code later on.
+Note that the all the identifiers (both type and fields) start with an uppercase
+letter. This is because only identifiers starting with an uppercase are exported
+outside of a package. So if the field `Name` was `name` the `encoding/json`
+package wouldn't be able to even know it is there.
 
-Try running your application again:
+Fortunately we can use field tags to modify what name is used in the JSON form
+for each Go field.
+
+For instance we would add the following field tags to the previous example:
+
+[embedmd]:# (examples/app.go /type Person/ /^}/)
+```go
+type Person struct {
+	Name     string `json:"name"`
+	AgeYears int    `json:"age_years"`
+}
+```
+
+_Note_: the backticks ```(`)``` are just a different way to write strings in Go.
+They allow you to use double quotes `(")` and to expand across multiple lines.
+
+For more info on structs read
+[this section](https://tour.golang.org/moretypes/5) of the Go tour.
+
+### Encoding Go structs to JSON
+
+To encode a Go struct we use a
+[`json.Encoder`](https://golang.org/pkg/encoding/json#Encoder), which provides
+a handy `Encode` method.
+
+[embedmd]:# (examples/app.go /func encode/ /^}/)
+```go
+func encode() {
+	p := Person{"gopher", 5}
+
+	// create an encoder that will write on the standard output.
+	enc := json.NewEncoder(os.Stdout)
+	// use the encoder to encode p, which could fail.
+	err := enc.Encode(p)
+	// if it failed, log the error and stop execution.
+	if err != nil {
+		log.Fatal(err)
+	}
+}
+```
+
+This code snippet shows how to handle errors every time we encode a value,
+and while in the example it seems impossible to have an error consider that
+the encoder output could be sent through a network connection.
+
+You can try the code with the `go run` tool, or using the Go playground
+[here](https://play.golang.org/p/rsO0Vk-9Xl).
+
+### Decoding JSON objects into Go structs
+
+The same way we have a `json.Encoder` we have a `json.Decoder` and its usage
+is very similar.
+
+[embedmd]:# (examples/app.go /func decode/ /^}/)
+```go
+func decode() {
+	// create an empty Person value.
+	var p Person
+
+	// create a decoder reading from the standard input.
+	dec := json.NewDecoder(os.Stdin)
+	// use the decoder to decode a value into p.
+	err := dec.Decode(&p)
+	// if it failed, log the error and stop execution.
+	if err != nil {
+		log.Fatal(err)
+	}
+	// otherwise log what we decoded.
+	fmt.Printf("decoded: %#v\n", p)
+}
+```
+
+Note that the parameter for `dec.Decode` is not `p` but `&p`. This is a
+pointer to the variable `p` so the `encoding/json` package can modify the
+value of `p`. Otherwise we would pass a copy of `p` and any modifications
+would be without side effects.
+
+Read more about pointers in the [Go tour](https://tour.golang.org/moretypes/1).
+
+## encoding/json + net/http = web services!
+
+Let's have another look at the `http.HandlerFunc` type:
+
+```go
+type HandlerFunc func(ResponseWriter, *Request)
+```
+
+### Encoding JSON onto a http.ResponseWriter
+
+As we mentioned before `http.ResponseWriter` implements the method `Write` and
+therefore satisfies the `io.Writer` interface required by `json.NewEncoder`.
+
+So we can easily JSON encode a `Person` on an HTTP response:
+
+[embedmd]:# (examples/app.go /func encodeHandler/ /^}/)
+```go
+func encodeHandler(w http.ResponseWriter, r *http.Request) {
+	p := Person{"gopher", 5}
+
+	// set the Content-Type header.
+	w.Header().Set("Content-Type", "application/json")
+
+	// encode p to the output.
+	enc := json.NewEncoder(w)
+	err := enc.Encode(p)
+	if err != nil {
+		// if encoding fails, create an error page with code 500.
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+	}
+}
+```
+
+### Decoding JSON from a http.Request
+
+The `http.Request` type is a struct and it has a field named `Body` of type
+`io.ReadCloser`, an interface with the methods `Read` and `Close`.
+
+Since the signature of the method `Read` matches the one in `io.Reader` we can
+say that `io.ReadCloser` is an `io.Reader` and therefore we can use the `Body`
+of a `http.Request` as the input of a `json.Decoder`.
+
+[embedmd]:# (examples/app.go /func decodeHandler/ /^}/)
+```go
+func decodeHandler(w http.ResponseWriter, r *http.Request) {
+	var p Person
+
+	dec := json.NewDecoder(r.Body)
+	err := dec.Decode(&p)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	fmt.Fprintf(w, "Name is %v and age is %v", p.Name, p.AgeYears)
+}
+```
+
+If you want to test this handler you can use curl:
 
 ```bash
-$ dev_appserver.py .
+$ curl -d '{"name": "gopher", "age_years": 5}' http://localhost:8080/
+Name is gopher and age is 5
 ```
 
-Or deploying it:
+## Exercise
 
-```bash
-$ gcloud app deploy app.yaml
-```
-
-And verify that the output matches your expectations:
-
-![Hello, App Engine](screenshot.png)
-
-## Serving dynamic content: HTML + Go
-
-Static content is often not enough and we need our web app frontend (HTML + JS)
-to communicate with our backend.
-
-To do so we have two different options:
-
-- use `app.yaml` to determine what requests are handled by which part, or
-- use multiple modules on possibly different runtimes.
-
-You can learn more about Go modules on this
-[documentation](https://cloud.google.com/appengine/docs/go/modules/).
-
-For this workshop we will go with the simple option and just enhance the
-previous `app.yaml` to match our requirements.
-
-We will need three components:
-
-- a Go program similar to the previous one,
-- an HTML page with pure static content, and
-- an `app.yaml` file to glue everything together.
-
-The only part that changes here is the `app.yaml`:
-
-[embedmd]:# (mixed_content/app.yaml)
-```yaml
-runtime: go
-api_version: go1
-
-handlers:
-# requests with empty paths are shown the html page.
-- url: /
-  static_files: hello.html
-  upload: hello.html
-# requests with the /api/ path are handled by the Go app.
-- url: /api/.*
-  script: _go_app
-```
-
-Try changing the `/api/hello` url on the second handler to `/api/backend`.
-Why does it fail? Fix it.
-
-### Accessing the backend from the frontend
-
-This can be done in *many* ways, as many as JavaScript frameworks you can think
-of. For this simple example we will simply use [jQuery](https://jquery.com/).
-
-
-[embedmd]:# (mixed_content/hello.html /.*DOCTYPE/ $)
-```html
-<!DOCTYPE html>
-
-<html>
-<head>
-	<title>Hello, App Engine</title>
-	<script src="https://ajax.googleapis.com/ajax/libs/jquery/2.1.4/jquery.min.js"></script>
-</head>
-<body>
-	<h1>Hello, App Engine</h1>
-	<p>The backend says: <span id="message"></span></p>
-	<script>
-		$(function() {
-			$("#message").load("/api/hello");
-		});
-	</script>
-</body>
-</html>
-```
-
-## Directory organization for bigger applications
-
-As you can imagine very soon you will want to serve many static files, some
-HTML, JavaScript, CSS, etc. Rather than listing each of those on your `app.yaml`
-there's a much simpler option once you put all of them in a single directory.
-
-	my_app
-	|- app.yaml
-	|- hello.go
-	\- static
-	   |- index.html
-	   |- style.css
-	   \- script.js
-
-Your `app.yaml` in this case will look like this:
-
-[embedmd]:# (static_dirs/app.yaml /runtime/ $)
-```yaml
-runtime: go
-api_version: go1
-
-handlers:
-# requests starting with /api/ are handled by the Go app.
-- url: /api/.*
-  script: _go_app
-
-# if the path is empty show index.html.
-- url: /
-  static_files: static/index.html
-  upload: static/index.html
-
-# otherwise try to find it in the static directory.
-- url: /
-  static_dir: static
-```
-
-This kind of structure provides a clear structure of the application.
-
-## Exercise: let's build a whole app!
-
-OK, we know now enough stuff to build an application. So, let's do it! 🎉
-
-Have a look at this [introduction](../events) describing the application
-and implement *ONLY* [step 0](../events/step0/README.md). Then come back for more.
+Add JSON encoding and decoding to the events application with [step 1](../events/step1/README.md).
+Then come back here for more!
 
 # Congratulations!
 
-You just created your first application where a web frontend communicates with
-your Go backend!
+You've successfully built a web application where the backend and the frontend
+interact via JSON messages over HTTP requests: that's pretty much as RESTful as
+it gets!
 
-But, shouldn't the backend generate JSON rather than plain text?
-Let's learn about JSON encoding and decoding on the [next section](../section06/README.md).
+But what if we want to store some of that information we're decoding?
+
+Continue to the [next chapter](../section07/README.md) to learn about
+the Google Cloud Datastore.

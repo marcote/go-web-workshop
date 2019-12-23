@@ -18,7 +18,6 @@ To go through this you will need the following:
 1. You have installed the [Go Programming Language][1].
 1. You have set up a `GOPATH` by following the [How to Write Go Code][9] tutorial.
 1. You are somewhat familiar with the basics of Go. (The [Go Tour][2] is a pretty good place to start)
-1. You have a Google account and you have installed the [Google Cloud SDK][3].
 
 ## Contents
 
@@ -32,9 +31,8 @@ The workshops is divided in eleven sections:
 - [1: Web Clients](section01/README.md)
 - [2: Web servers](section02/README.md)
 - [3: Input validation and status codes](section03/README.md)
-- [4: Deploying to App Engine](section04/README.md)
-- [5: Hello, HTML](section05/README.md)
-- [6: JSON encoding and decoding](section06/README.md)
+- [4: Hello, HTML](section04/README.md)
+- [5: JSON encoding and decoding](section05/README.md)
 
 ## Resources
 
@@ -54,7 +52,6 @@ Some of the places where gophers tend to hang out are:
 - #go-nuts IRC channel at [Freenode](https://freenode.net/)
 - Gophers’ community on [Slack](https://gophers.slack.com/messages/general/) (signup [here](https://invite.slack.golangbridge.org/) for an account).
 - [@golang](https://twitter.com/golang) and [#golang](https://twitter.com/search?q=%23golang) on Twitter.
-- [Go+ community](https://plus.google.com/u/1/communities/114112804251407510571) on Google Plus.
 - [Go user meetups](https://go-meetups.appspot.com/)
 - golang-nuts [mailing list](https://groups.google.com/forum/?fromgroups#!forum/golang-nuts)
 - Go community [Wiki](https://github.com/golang/go/wiki)
